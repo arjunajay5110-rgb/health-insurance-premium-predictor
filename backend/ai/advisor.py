@@ -23,8 +23,14 @@ class AiAdvisorService:
             try:
                 reply = self._call_gemini_api(user_message, context_str, history)
                 return {"success": True, "reply": reply, "timestamp": timestamp}
+            except urllib.error.HTTPError as e:
+                body = e.read().decode("utf-8")
+                logger.error(f"Gemini HTTP {e.code}: {body}")
+                raise
             except Exception as e:
-                logger.warning(f"Gemini API call failed: {str(e)}. Falling back to domain advisor engine.")
+                logger.error(f"Gemini Error: {str(e)}")
+                raise
+                
 
         # 2. Domain Knowledge Advisor Engine
         reply = self._domain_advisor_engine(user_message, prediction_context)
@@ -57,8 +63,11 @@ STRICT DOMAIN RULE: ONLY answer questions related to health insurance, policy co
                         parts = candidates[0].get("content", {}).get("parts", [])
                         if parts:
                             return {"success": True, "term": query, "definition": parts[0].get("text", "").strip(), "source": "Gemini AI", "timestamp": timestamp}
+            except urllib.error.HTTPError as e:
+                body = e.read().decode("utf-8")
+                logger.error(f"Gemini Glossary HTTP {e.code}: {body}")
             except Exception as e:
-                logger.warning(f"Gemini glossary search failed: {str(e)}")
+                logger.error(f"Gemini Glossary Error: {str(e)}")
 
         # Fallback AI search definition generator
         definition = f"**{query.title()}** is a health insurance concept. In insurance policies, it defines coverage rules, claims procedures, or financial responsibility between the policyholder and the insurance provider. For official terms, refer to your policy schedule."
