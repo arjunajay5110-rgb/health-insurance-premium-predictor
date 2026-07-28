@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List, Dict, Any
 
-from backend.ml.prediction import prediction_engine
+from ml.prediction import prediction_engine
 from backend.services.premium_calibration import calibration_service
 from backend.ai.router import router as ai_router
 
