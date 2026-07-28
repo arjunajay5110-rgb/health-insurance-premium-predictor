@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
-from backend.ai.advisor import ai_advisor_service
+from ai.advisor import ai_advisor_service
 
 router = APIRouter(prefix="/api/advisor", tags=["AI Advisor"])
 

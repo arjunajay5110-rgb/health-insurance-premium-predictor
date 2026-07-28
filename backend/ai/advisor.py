@@ -4,8 +4,8 @@ import logging
 import urllib.request
 import urllib.error
 from datetime import datetime
-from backend.ai.prompts import SYSTEM_PROMPT
-from backend.ai.context import format_prediction_context
+from ai.prompts import SYSTEM_PROMPT
+from ai.context import format_prediction_context
 
 logger = logging.getLogger("health_insurance_api")
 
