@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field, validator
 from typing import Optional, List, Dict, Any
 
 from ml.prediction import prediction_engine
-from backend.services.premium_calibration import calibration_service
-from backend.ai.router import router as ai_router
+from services.premium_calibration import calibration_service
+from ai.router import router as ai_router
 
 # Configure application logging
 logging.basicConfig(
