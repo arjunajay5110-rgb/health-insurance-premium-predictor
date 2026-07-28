@@ -9,6 +9,19 @@ export interface PredictionInput {
   weight_kg?: number;
 }
 
+export interface HealthSnapshotData {
+  age: number;
+  gender: string;
+  bmi: number;
+  bmi_status: string;
+  smoker: string;
+  children: number;
+  region: string;
+  risk_level: string;
+  health_score: number;
+  health_status: string;
+}
+
 export interface PredictionInputsSummary {
   age: number;
   gender: string;
@@ -19,23 +32,14 @@ export interface PredictionInputsSummary {
   bmi_category_obese: boolean;
 }
 
-export interface CurrencyConfig {
-  rate: number;
-  symbol: string;
-  flag: string;
-  name: string;
-}
-
 export interface PredictionResultData {
   success: boolean;
-  estimated_premium: number;
-  estimated_premium_inr: number;
-  base_usd_premium: number;
+  annual_premium: number;
+  monthly_premium: number;
   currency: string;
-  currency_code: string;
   model: string;
   processing_time_ms: number;
-  exchange_rates: Record<string, CurrencyConfig>;
+  health_snapshot: HealthSnapshotData;
   inputs: PredictionInputsSummary;
 }
 

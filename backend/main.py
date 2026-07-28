@@ -1,12 +1,14 @@
 import os
 import time
 import logging
-import joblib
-import numpy as np
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
-from typing import Optional
+from typing import Optional, List, Dict, Any
+
+from backend.ml.prediction import prediction_engine
+from backend.services.premium_calibration import calibration_service
+from backend.ai.router import router as ai_router
 
 # Configure application logging
 logging.basicConfig(
@@ -17,9 +19,12 @@ logger = logging.getLogger("health_insurance_api")
 
 app = FastAPI(
     title="Health Insurance Premium Predictor API",
-    description="Production backend API for predicting annual health insurance premiums using LightGBM",
-    version="1.2.0"
+    description="Production backend API with Family Floater Estimator & AI Insurance Advisor",
+    version="3.0.0"
 )
+
+# Register modular AI router
+app.include_router(ai_router)
 
 # CORS Configuration using environment variables
 allowed_origin_env = os.getenv("ALLOWED_ORIGIN", "*")
@@ -33,41 +38,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global variables for ML artifacts (loaded ONLY ONCE during startup)
-model = None
-scaler = None
-
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "insurance_lightgbm_model.pkl")
-SCALER_PATH = os.path.join(os.path.dirname(__file__), "insurance_scaler.pkl")
-
-# Configurable Exchange Rates
-usd_to_inr_rate = float(os.getenv("DEFAULT_EXCHANGE_RATE_USD_TO_INR", "85.0"))
-
-EXCHANGE_RATES = {
-    "USD": {"rate": 1.0, "symbol": "$", "flag": "🇺🇸", "name": "USD ($)"},
-    "INR": {"rate": usd_to_inr_rate, "symbol": "₹", "flag": "🇮🇳", "name": "INR (₹)"},
-    "EUR": {"rate": 0.92, "symbol": "€", "flag": "🇪🇺", "name": "EUR (€)"},
-    "GBP": {"rate": 0.79, "symbol": "£", "flag": "🇬🇧", "name": "GBP (£)"},
-    "AED": {"rate": 3.67, "symbol": "د.إ", "flag": "🇦🇪", "name": "AED (د.إ)"},
-    "CAD": {"rate": 1.37, "symbol": "C$", "flag": "🇨🇦", "name": "CAD (C$)"},
-    "AUD": {"rate": 1.53, "symbol": "A$", "flag": "🇦🇺", "name": "AUD (A$)"},
-    "SGD": {"rate": 1.34, "symbol": "S$", "flag": "🇸🇬", "name": "SGD (S$)"},
-    "JPY": {"rate": 155.0, "symbol": "¥", "flag": "🇯🇵", "name": "JPY (¥)"},
-}
-
 @app.on_event("startup")
-def load_ml_artifacts():
-    """Load LightGBM model and StandardScaler ONCE into global memory during FastAPI startup."""
-    global model, scaler
+def startup_event():
+    """Load LightGBM model and StandardScaler ONCE during application startup."""
     try:
-        if os.path.exists(MODEL_PATH) and os.path.exists(SCALER_PATH):
-            model = joblib.load(MODEL_PATH)
-            scaler = joblib.load(SCALER_PATH)
-            logger.info("Successfully loaded LightGBM model and StandardScaler ONCE during application startup.")
-        else:
-            logger.error(f"Artifact files missing: {MODEL_PATH} or {SCALER_PATH}")
+        prediction_engine.load_artifacts()
+        logger.info("FastAPI startup: ML Artifacts successfully loaded into global memory.")
     except Exception as e:
-        logger.error(f"Failed to load ML artifacts: {str(e)}")
+        logger.error(f"FastAPI startup failed to load ML artifacts: {str(e)}")
 
 class PredictRequest(BaseModel):
     age: int = Field(..., ge=18, le=100, description="Age in years (18-100)")
@@ -101,30 +79,75 @@ class PredictRequest(BaseModel):
             raise ValueError(f"Region must be one of {valid_regions}")
         return v_clean
 
+class FamilyMember(BaseModel):
+    name: str = Field(..., description="Name or role of member (e.g. Primary, Spouse, Child)")
+    relationship: str = Field(..., description="Relationship: 'Primary', 'Spouse', 'Child', 'Parent'")
+    age: int = Field(..., ge=1, le=100)
+    gender: str = Field(...)
+    smoker: str = Field(...)
+    height_cm: Optional[float] = Field(None)
+    weight_kg: Optional[float] = Field(None)
+    bmi: Optional[float] = Field(None)
+
+class FamilyPredictRequest(BaseModel):
+    region: str = Field("southeast", description="Policy region")
+    members: List[FamilyMember] = Field(..., min_items=1)
+
+def compute_health_metrics(age: int, bmi: float, smoker: str):
+    """Compute BMI status, Health Score (0-100), Health Status, and Risk Level."""
+    if bmi < 18.5:
+        bmi_status = "Underweight"
+        bmi_deduction = 10
+    elif bmi <= 24.9:
+        bmi_status = "Healthy"
+        bmi_deduction = 0
+    elif bmi <= 29.9:
+        bmi_status = "Overweight"
+        bmi_deduction = 10
+    else:
+        bmi_status = "Obese"
+        bmi_deduction = 25
+
+    smoker_deduction = 30 if smoker == 'yes' else 0
+    age_deduction = 15 if age >= 50 else (5 if age >= 35 else 0)
+
+    health_score = max(10, min(100, 100 - (bmi_deduction + smoker_deduction + age_deduction)))
+
+    if health_score >= 90:
+        health_status = "Excellent"
+    elif health_score >= 75:
+        health_status = "Good"
+    elif health_score >= 60:
+        health_status = "Moderate"
+    else:
+        health_status = "Needs Attention"
+
+    if smoker == 'yes' or bmi > 29.9 or age >= 55:
+        risk_level = "High" if (smoker == 'yes' and bmi > 29.9) else "Moderate"
+    else:
+        risk_level = "Low"
+
+    return {
+        "bmi_status": bmi_status,
+        "health_score": health_score,
+        "health_status": health_status,
+        "risk_level": risk_level
+    }
+
 @app.get("/api/health")
 def health_check():
     """Endpoint for load balancer health monitoring."""
     return {
         "status": "healthy",
-        "model_loaded": model is not None,
-        "scaler_loaded": scaler is not None,
-        "version": "1.2.0"
+        "model_loaded": prediction_engine._is_loaded,
+        "version": "3.0.0"
     }
 
 @app.post("/api/predict")
 def predict_premium(payload: PredictRequest):
-    """Predict annual health insurance premium using the loaded LightGBM regressor."""
+    """Predict annual and monthly health insurance premium in INR using ML engine & calibration layer."""
     start_time = time.time()
-    logger.info(f"Prediction request: age={payload.age}, gender={payload.gender}, smoker={payload.smoker}, region={payload.region}")
 
-    if model is None or scaler is None:
-        logger.error("Prediction attempted while ML model is uninitialized.")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Machine learning model is not loaded on server."
-        )
-
-    # 1. Resolve BMI (direct or derived from height and weight)
     calc_bmi = payload.bmi
     if calc_bmi is None:
         if payload.height_cm is not None and payload.weight_kg is not None:
@@ -144,42 +167,43 @@ def predict_premium(payload: PredictRequest):
         )
 
     try:
-        # 2. Categorical mapping & encoding matching exact notebook logic
-        is_female = 1.0 if payload.gender == 'female' else 0.0
-        is_smoker = 1.0 if payload.smoker == 'yes' else 0.0
-        region_southeast = 1.0 if payload.region == 'southeast' else 0.0
-        bmi_obese = 1.0 if calc_bmi > 29.9 else 0.0
+        metrics = compute_health_metrics(payload.age, calc_bmi, payload.smoker)
 
-        # 3. Apply StandardScaler to numeric features ['age', 'bmi', 'children']
-        raw_numeric = np.array([[float(payload.age), float(calc_bmi), float(payload.children)]])
-        scaled_numeric = scaler.transform(raw_numeric)
+        raw_usd_prediction = prediction_engine.predict_raw_usd(
+            age=payload.age,
+            gender=payload.gender,
+            bmi=calc_bmi,
+            children=payload.children,
+            smoker=payload.smoker,
+            region=payload.region
+        )
 
-        # 4. Construct exact feature vector: ['age', 'isfemale', 'bmi', 'children', 'is_smoker', 'region_southeast', 'bmi_category_Obese']
-        feature_vector = np.array([[
-            scaled_numeric[0, 0],
-            is_female,
-            scaled_numeric[0, 1],
-            scaled_numeric[0, 2],
-            is_smoker,
-            region_southeast,
-            bmi_obese
-        ]])
-
-        # 5. Run inference using loaded LightGBM model
-        raw_usd_prediction = float(model.predict(feature_vector)[0])
-        estimated_premium_usd = round(max(0.0, raw_usd_prediction), 2)
+        calibrated_result = calibration_service.calibrate(
+            raw_usd_prediction=raw_usd_prediction,
+            risk_level=metrics["risk_level"]
+        )
 
         elapsed_ms = round((time.time() - start_time) * 1000, 2)
-        logger.info(f"Prediction successful: ${estimated_premium_usd:,.2f} in {elapsed_ms}ms")
 
         return {
             "success": True,
-            "estimated_premium": estimated_premium_usd,
-            "currency": "$",
-            "currency_code": "USD",
+            "annual_premium": calibrated_result["annual_premium"],
+            "monthly_premium": calibrated_result["monthly_premium"],
+            "currency": "₹",
             "model": "LightGBM",
             "processing_time_ms": elapsed_ms,
-            "exchange_rates": EXCHANGE_RATES,
+            "health_snapshot": {
+                "age": payload.age,
+                "gender": payload.gender,
+                "bmi": calc_bmi,
+                "bmi_status": metrics["bmi_status"],
+                "smoker": payload.smoker,
+                "children": payload.children,
+                "region": payload.region,
+                "risk_level": metrics["risk_level"],
+                "health_score": metrics["health_score"],
+                "health_status": metrics["health_status"]
+            },
             "inputs": {
                 "age": payload.age,
                 "gender": payload.gender,
@@ -187,7 +211,7 @@ def predict_premium(payload: PredictRequest):
                 "children": payload.children,
                 "smoker": payload.smoker,
                 "region": payload.region,
-                "bmi_category_obese": bool(bmi_obese)
+                "bmi_category_obese": bool(calc_bmi > 29.9)
             }
         }
 
@@ -197,3 +221,84 @@ def predict_premium(payload: PredictRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while generating prediction: {str(e)}"
         )
+
+@app.post("/api/predict/family")
+def predict_family_premium(payload: FamilyPredictRequest):
+    """Estimate Family Floater Health Insurance Premium based on individual ML predictions."""
+    start_time = time.time()
+    
+    if not payload.members:
+        raise HTTPException(status_code=400, detail="At least one family member is required.")
+
+    member_results = []
+    total_scores = 0
+
+    for m in payload.members:
+        # Resolve BMI for member
+        calc_bmi = m.bmi or 22.5
+        if calc_bmi is None and m.height_cm and m.weight_kg:
+            calc_bmi = m.weight_kg / ((m.height_cm / 100.0) ** 2)
+        calc_bmi = round(float(calc_bmi), 2)
+
+        metrics = compute_health_metrics(m.age, calc_bmi, m.smoker)
+        total_scores += metrics["health_score"]
+
+        raw_usd = prediction_engine.predict_raw_usd(
+            age=m.age,
+            gender=m.gender,
+            bmi=calc_bmi,
+            children=0,
+            smoker=m.smoker,
+            region=payload.region
+        )
+        calibrated = calibration_service.calibrate(raw_usd, metrics["risk_level"])
+
+        member_results.append({
+            "name": m.name,
+            "relationship": m.relationship,
+            "age": m.age,
+            "gender": m.gender,
+            "bmi": calc_bmi,
+            "smoker": m.smoker,
+            "risk_level": metrics["risk_level"],
+            "health_score": metrics["health_score"],
+            "individual_annual_inr": calibrated["annual_premium"]
+        })
+
+    # Sort members by individual premium descending
+    sorted_members = sorted(member_results, key=lambda x: x["individual_annual_inr"], reverse=True)
+
+    # Family Floater Aggregation Rule:
+    # 100% of highest risk member + 40% of second member + 25% of remaining members
+    floater_annual = sorted_members[0]["individual_annual_inr"]
+    if len(sorted_members) > 1:
+        floater_annual += sorted_members[1]["individual_annual_inr"] * 0.40
+    for extra in sorted_members[2:]:
+        floater_annual += extra["individual_annual_inr"] * 0.25
+
+    final_annual_inr = round(floater_annual)
+    final_monthly_inr = round(final_annual_inr / 12)
+
+    avg_score = round(total_scores / len(sorted_members))
+    highest_risk = sorted_members[0]["relationship"] + " (" + sorted_members[0]["name"] + ")"
+
+    has_high = any(x["risk_level"] == "High" for x in sorted_members)
+    family_overall_risk = "High" if has_high else ("Moderate" if avg_score < 80 else "Low")
+
+    elapsed_ms = round((time.time() - start_time) * 1000, 2)
+
+    return {
+        "success": True,
+        "policy_type": "Family Floater",
+        "annual_premium": final_annual_inr,
+        "monthly_premium": final_monthly_inr,
+        "currency": "₹",
+        "processing_time_ms": elapsed_ms,
+        "family_summary": {
+            "total_members": len(sorted_members),
+            "members": sorted_members,
+            "highest_risk_member": highest_risk,
+            "average_health_score": avg_score,
+            "overall_family_risk": family_overall_risk
+        }
+    }
