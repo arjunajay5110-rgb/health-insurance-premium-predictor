@@ -45,7 +45,7 @@ STRICT DOMAIN RULE: ONLY answer questions related to health insurance, policy co
 
         if self.api_key:
             try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.api_key}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={self.api_key}"
                 prompt_content = f"{system_instruction}\n\nUser Search Query: {query}"
                 payload = {
                     "contents": [{"role": "user", "parts": [{"text": prompt_content}]}],
