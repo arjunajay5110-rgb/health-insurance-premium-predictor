@@ -233,17 +233,17 @@ def predict_premium(payload: PredictRequest):
 
 @app.post("/api/predict/family")
 def predict_family_premium(payload: FamilyPredictRequest):
-    """Estimate Family Floater Health Insurance Premium based on independent ML predictions + floater discount."""
+    """Estimate Family Floater Premium using independent adult ML predictions + Floater Discount Service."""
     if not payload.members:
         raise HTTPException(status_code=400, detail="At least one family member is required.")
 
     try:
-        member_dicts = [m.dict() for m in payload.members]
-        result = family_aggregation_service.calculate_family_floater(member_dicts, payload.region)
+        members_data = [m.dict() for m in payload.members]
+        result = family_aggregation_service.process_family_floater(members_data, payload.region)
         return result
     except Exception as e:
-        logger.error(f"Error during family floater prediction: {str(e)}", exc_info=True)
+        logger.error(f"Error during family premium calculation: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while estimating family floater premium: {str(e)}"
+            detail=f"An error occurred during family premium estimation: {str(e)}"
         )

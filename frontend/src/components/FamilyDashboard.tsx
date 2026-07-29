@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Shield, RefreshCw, Activity, CheckCircle, Circle, Milestone, Scale, Sparkles, AlertCircle, Info, ChevronRight } from 'lucide-react';
+import { Shield, RefreshCw, Activity, CheckCircle, Circle, Milestone, Scale, Sparkles, Info, ChevronRight } from 'lucide-react';
 
 interface FamilyDashboardProps {
   familyResult: any;
@@ -323,6 +323,13 @@ export default function FamilyDashboard({ familyResult, onReset }: FamilyDashboa
                     <span className="font-extrabold text-blue-600 dark:text-blue-400">₹{formatINR(mem.individual_annual_inr)}</span>
                   </div>
                 </div>
+
+                {mem.wellness_suggestions && mem.wellness_suggestions.length > 0 && (
+                  <div className="pt-2 border-t border-slate-200/40 dark:border-zinc-800 text-[11px] text-slate-600 dark:text-zinc-400 space-y-1">
+                    <span className="font-semibold text-[10px] text-slate-400 uppercase">Wellness Suggestion</span>
+                    <p className="line-clamp-2">{mem.wellness_suggestions[0]}</p>
+                  </div>
+                )}
               </div>
             );
           })}

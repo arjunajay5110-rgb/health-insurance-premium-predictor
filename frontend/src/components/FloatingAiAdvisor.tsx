@@ -18,8 +18,7 @@ interface MessageItem {
 
 const PRE_PREDICTION_CHIPS = [
   '💬 What is Health Insurance?',
-  '💬 Nutrition & Diet Advice',
-  '💬 Exercise & Fitness Tips',
+  '💬 What is BMI?',
   '💬 What is a Waiting Period?',
   '💬 What is Co-payment?',
   '💬 What is a Deductible?',
@@ -27,11 +26,11 @@ const PRE_PREDICTION_CHIPS = [
 
 const POST_PREDICTION_CHIPS = [
   '💬 Explain my premium',
-  '💬 How to improve my Health Score?',
-  '💬 Weight loss & BMI advice',
-  '💬 Why is my premium estimated like this?',
+  '💬 Why is my premium high?',
+  '💬 Explain my BMI',
+  '💬 How can I improve my Health Score?',
   '💬 What affected my premium?',
-  '💬 Fitness & lifestyle recommendations',
+  '💬 How can I improve my health profile?',
 ];
 
 export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvisorProps) {
@@ -39,19 +38,11 @@ export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvis
   const [showTooltip, setShowTooltip] = useState<boolean>(true);
   const [hasContextNotified, setHasContextNotified] = useState<boolean>(false);
 
-  const getInitialWelcomeMessage = (ctx?: PredictionResultData | null): string => {
-    if (ctx && ctx.health_snapshot) {
-      const snap = ctx.health_snapshot;
-      return `👋 Welcome back!\n\nI've reviewed your latest health insurance prediction and I'm ready to help. Looking at your profile, your Health Score is **${snap.health_score}/100** (${snap.risk_level} Risk).\n\nWhether you'd like to understand why your premium was estimated the way it was, improve your health profile, compare plans, or ask health and nutrition questions, I'm here to help.\n\nWhat would you like to explore today?`;
-    }
-    return `👋 Welcome!\n\nI'm Aegis AI, your personal Health & Insurance Advisor.\n\nOnce you calculate your insurance premium, I'll use your health profile to provide personalized guidance. Until then, I can answer general questions about:\n\n• Health insurance & floaters\n• Nutrition & diet\n• Exercise & weight loss\n• BMI & Health Score\n• Insurance terms & deductibles\n\nWhat would you like to know?`;
-  };
-
   const [messages, setMessages] = useState<MessageItem[]>([
     {
       id: 'welcome-1',
       role: 'assistant',
-      content: getInitialWelcomeMessage(predictionContext),
+      content: "Hello! I'm Aegis AI, your AI Insurance Advisor. Ask me anything about health insurance, deductibles, waiting periods, or policy plans!",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -75,12 +66,12 @@ export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvis
     if (predictionContext && !hasContextNotified) {
       setHasContextNotified(true);
       const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const snap = predictionContext.health_snapshot;
+      const annualStr = new Intl.NumberFormat('en-IN').format(predictionContext.annual_premium);
 
       const updateMsg: MessageItem = {
         id: `ctx-${Date.now()}`,
         role: 'assistant',
-        content: `👋 Welcome back!\n\nI've reviewed your latest health insurance prediction and I'm ready to help. Your Health Score is currently **${snap.health_score}/100** (${snap.risk_level} Risk).\n\nWhether you'd like to understand why your premium was estimated the way it was, improve your health profile, compare insurance plans, or ask nutrition questions, I'm here for you. What would you like to explore today?`,
+        content: `I've received your updated premium estimate (**₹${annualStr} / Year**)! Feel free to ask me to explain your premium breakdown or how to improve your health score.`,
         timestamp: timeStr,
       };
 
@@ -151,7 +142,7 @@ export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvis
       {
         id: `welcome-${Date.now()}`,
         role: 'assistant',
-        content: getInitialWelcomeMessage(predictionContext),
+        content: "Conversation reset! Ask me anything about insurance coverage, deductibles, or your health profile.",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       },
     ]);
@@ -167,7 +158,7 @@ export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvis
           <span className="text-base shrink-0">👋</span>
           <div className="space-y-1">
             <p className="font-semibold leading-snug">Need help understanding your insurance?</p>
-            <p className="text-[11px] text-slate-300 dark:text-zinc-600">Ask Aegis AI Advisor.</p>
+            <p className="text-[11px] text-slate-300 dark:text-zinc-600">Ask the AI Advisor.</p>
           </div>
           <button
             onClick={() => setShowTooltip(false)}
@@ -178,7 +169,7 @@ export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvis
         </div>
       )}
 
-      {/* 2. Prominent Floating Action Pill Button */}
+      {/* 2. Prominent Floating Action Pill Button (Explicitly Labeled "AI Advisor") */}
       <button
         onClick={() => {
           setIsOpen(!isOpen);
@@ -218,12 +209,12 @@ export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvis
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
-                  <h3 className="font-bold text-slate-900 dark:text-zinc-100 text-sm">Aegis AI Advisor</h3>
+                  <h3 className="font-bold text-slate-900 dark:text-zinc-100 text-sm">AI Advisor</h3>
                   <span className="px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-zinc-800 text-blue-700 dark:text-blue-300 text-[9px] font-bold">
                     Health AI
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-zinc-400">Context-aware health & insurance coach</p>
+                <p className="text-[11px] text-slate-500 dark:text-zinc-400">Context-aware insurance guidance</p>
               </div>
             </div>
 
@@ -299,7 +290,7 @@ export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvis
                 </div>
                 <div className="p-3 rounded-2xl bg-white dark:bg-[#18181C] border border-slate-200 dark:border-zinc-800 text-slate-500 dark:text-zinc-400 flex items-center gap-2">
                   <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 animate-spin" />
-                  <span className="text-[11px]">Aegis AI is thinking...</span>
+                  <span className="text-[11px]">AI Advisor is thinking...</span>
                 </div>
               </div>
             )}
@@ -309,8 +300,8 @@ export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvis
 
           {/* Context Banner Tag */}
           <div className="px-3 py-1.5 bg-blue-50/70 dark:bg-zinc-800/60 border-t border-b border-slate-200/60 dark:border-zinc-800 text-[10px] text-blue-900 dark:text-blue-300 flex items-center justify-between shrink-0">
-            <span>{predictionContext ? '💡 Health Profile Active' : '💡 General Guidance Mode'}</span>
-            <span className="font-semibold">{predictionContext ? `Score ${predictionContext.health_snapshot.health_score}/100` : 'Health & Insurance Advisor'}</span>
+            <span>{predictionContext ? '💡 Prediction Context Active' : '💡 Pre-Prediction Mode'}</span>
+            <span className="font-semibold">{predictionContext ? `₹${new Intl.NumberFormat('en-IN').format(predictionContext.annual_premium)}/yr` : 'General QA'}</span>
           </div>
 
           {/* Suggested Question Chips */}
@@ -338,7 +329,7 @@ export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvis
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              placeholder="Ask Aegis AI about insurance, nutrition, or fitness..."
+              placeholder="Ask AI Advisor about your insurance..."
               className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-[#18181C] text-xs text-slate-900 dark:text-zinc-100 outline-none focus:ring-2 focus:ring-blue-500 transition-all"
             />
 
