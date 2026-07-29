@@ -6,9 +6,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List, Dict, Any
 
-from ml.prediction import prediction_engine
-from services.premium_calibration import calibration_service
-from ai.router import router as ai_router
+try:
+    from backend.ml.prediction import prediction_engine
+    from backend.services.premium_calibration import calibration_service
+    from backend.ai.router import router as ai_router
+except ModuleNotFoundError:
+    from ml.prediction import prediction_engine
+    from services.premium_calibration import calibration_service
+    from ai.router import router as ai_router
 
 # Configure application logging
 logging.basicConfig(
@@ -88,6 +93,8 @@ class FamilyMember(BaseModel):
     height_cm: Optional[float] = Field(None)
     weight_kg: Optional[float] = Field(None)
     bmi: Optional[float] = Field(None)
+    children: Optional[int] = Field(0)
+    region: Optional[str] = Field("southeast")
 
 class FamilyPredictRequest(BaseModel):
     region: str = Field("southeast", description="Policy region")
@@ -97,7 +104,7 @@ def compute_health_metrics(age: int, bmi: float, smoker: str):
     """Compute BMI status, Health Score (0-100), Health Status, and Risk Level."""
     if bmi < 18.5:
         bmi_status = "Underweight"
-        bmi_deduction = 10
+        bmi_deduction = 15
     elif bmi <= 24.9:
         bmi_status = "Healthy"
         bmi_deduction = 0
@@ -122,7 +129,7 @@ def compute_health_metrics(age: int, bmi: float, smoker: str):
     else:
         health_status = "Needs Attention"
 
-    if smoker == 'yes' or bmi > 29.9 or age >= 55:
+    if smoker == 'yes' or bmi > 29.9 or bmi < 18.5 or age >= 55:
         risk_level = "High" if (smoker == 'yes' and bmi > 29.9) else "Moderate"
     else:
         risk_level = "Low"
@@ -232,24 +239,42 @@ def predict_family_premium(payload: FamilyPredictRequest):
 
     member_results = []
     total_scores = 0
+    total_ages = 0
+    total_bmis = 0
+    num_smokers = 0
+    num_healthy = 0
 
     for m in payload.members:
         # Resolve BMI for member
-        calc_bmi = m.bmi or 22.5
-        if calc_bmi is None and m.height_cm and m.weight_kg:
-            calc_bmi = m.weight_kg / ((m.height_cm / 100.0) ** 2)
+        h = m.height_cm or 170.0
+        w = m.weight_kg or 70.0
+        calc_bmi = m.bmi
+        if calc_bmi is None or calc_bmi <= 0:
+            height_m = h / 100.0
+            calc_bmi = w / (height_m ** 2)
         calc_bmi = round(float(calc_bmi), 2)
 
         metrics = compute_health_metrics(m.age, calc_bmi, m.smoker)
         total_scores += metrics["health_score"]
+        total_ages += m.age
+        total_bmis += calc_bmi
+
+        if m.smoker == 'yes':
+            num_smokers += 1
+
+        if metrics["bmi_status"] == "Healthy" and m.smoker == 'no':
+            num_healthy += 1
+
+        num_children = m.children if m.children is not None else 0
+        mem_region = m.region or payload.region or "southeast"
 
         raw_usd = prediction_engine.predict_raw_usd(
             age=m.age,
             gender=m.gender,
             bmi=calc_bmi,
-            children=0,
+            children=num_children,
             smoker=m.smoker,
-            region=payload.region
+            region=mem_region
         )
         calibrated = calibration_service.calibrate(raw_usd, metrics["risk_level"])
 
@@ -258,10 +283,16 @@ def predict_family_premium(payload: FamilyPredictRequest):
             "relationship": m.relationship,
             "age": m.age,
             "gender": m.gender,
+            "height_cm": h,
+            "weight_kg": w,
             "bmi": calc_bmi,
+            "bmi_status": metrics["bmi_status"],
             "smoker": m.smoker,
+            "children": num_children,
+            "region": mem_region,
             "risk_level": metrics["risk_level"],
             "health_score": metrics["health_score"],
+            "health_status": metrics["health_status"],
             "individual_annual_inr": calibrated["annual_premium"]
         })
 
@@ -280,6 +311,8 @@ def predict_family_premium(payload: FamilyPredictRequest):
     final_monthly_inr = round(final_annual_inr / 12)
 
     avg_score = round(total_scores / len(sorted_members))
+    avg_age = round(total_ages / len(sorted_members), 1)
+    avg_bmi = round(total_bmis / len(sorted_members), 1)
     highest_risk = sorted_members[0]["relationship"] + " (" + sorted_members[0]["name"] + ")"
 
     has_high = any(x["risk_level"] == "High" for x in sorted_members)
@@ -296,6 +329,10 @@ def predict_family_premium(payload: FamilyPredictRequest):
         "processing_time_ms": elapsed_ms,
         "family_summary": {
             "total_members": len(sorted_members),
+            "average_age": avg_age,
+            "average_bmi": avg_bmi,
+            "num_smokers": num_smokers,
+            "num_healthy": num_healthy,
             "members": sorted_members,
             "highest_risk_member": highest_risk,
             "average_health_score": avg_score,

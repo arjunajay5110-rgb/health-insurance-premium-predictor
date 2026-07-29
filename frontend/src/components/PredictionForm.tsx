@@ -3,12 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import { PredictionInput, PredictionResultData } from '@/types';
 import { predictPremium, predictFamilyPremium } from '@/lib/api';
-import { Calculator, AlertCircle, Sparkles, Check, User, Scale, Flame, Users, Plus, Trash2, Shield, RefreshCw, UserPlus } from 'lucide-react';
+import { Calculator, AlertCircle, Sparkles, Check, User, Scale, Flame, Users, Plus, Trash2, Shield, UserPlus } from 'lucide-react';
 import PredictionResult from './PredictionResult';
 import HealthRiskGauge from './HealthRiskGauge';
 import HealthTimeline from './HealthTimeline';
 import InfluencerBreakdown from './InfluencerBreakdown';
 import InsuranceGlossary from './InsuranceGlossary';
+import FamilyDashboard from './FamilyDashboard';
 
 interface PredictionFormProps {
   onPredictionSuccess?: (res: PredictionResultData | null) => void;
@@ -20,9 +21,11 @@ interface FamilyMemberForm {
   relationship: 'Primary' | 'Spouse' | 'Child' | 'Parent';
   age: number;
   gender: 'female' | 'male';
-  smoker: 'yes' | 'no';
   heightCm: string;
   weightKg: string;
+  children: number;
+  smoker: 'yes' | 'no';
+  region: 'northeast' | 'northwest' | 'southeast' | 'southwest';
 }
 
 export default function PredictionForm({ onPredictionSuccess }: PredictionFormProps) {
@@ -41,14 +44,14 @@ export default function PredictionForm({ onPredictionSuccess }: PredictionFormPr
   const [heightCm, setHeightCm] = useState<string>('170');
   const [weightKg, setWeightKg] = useState<string>('70');
 
-  // Derived BMI
+  // Derived BMI for Individual
   const [derivedBmi, setDerivedBmi] = useState<number>(24.22);
   const [bmiCategory, setBmiCategory] = useState<string>('Healthy');
 
   // Family Members State
   const [familyMembers, setFamilyMembers] = useState<FamilyMemberForm[]>([
-    { id: '1', name: 'Primary Applicant', relationship: 'Primary', age: 35, gender: 'male', smoker: 'no', heightCm: '172', weightKg: '72' },
-    { id: '2', name: 'Spouse', relationship: 'Spouse', age: 32, gender: 'female', smoker: 'no', heightCm: '162', weightKg: '58' },
+    { id: '1', name: 'Primary Applicant', relationship: 'Primary', age: 35, gender: 'male', heightCm: '172', weightKg: '72', children: 1, smoker: 'no', region: 'southeast' },
+    { id: '2', name: 'Spouse', relationship: 'Spouse', age: 32, gender: 'female', heightCm: '162', weightKg: '58', children: 0, smoker: 'no', region: 'southeast' },
   ]);
 
   // UI State
@@ -57,7 +60,7 @@ export default function PredictionForm({ onPredictionSuccess }: PredictionFormPr
   const [result, setResult] = useState<PredictionResultData | null>(null);
   const [familyResult, setFamilyResult] = useState<any | null>(null);
 
-  // Recalculate BMI automatically whenever height/weight change
+  // Recalculate Individual BMI
   useEffect(() => {
     if (bmiMode === 'calculated') {
       const h = parseFloat(heightCm);
@@ -93,11 +96,34 @@ export default function PredictionForm({ onPredictionSuccess }: PredictionFormPr
       case 'obese':
         return { emoji: '🔴', text: 'Obese', badge: 'bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800' };
       default:
-        return { emoji: '🟠', text: 'Underweight', badge: 'bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800' };
+        return { emoji: '🔴', text: 'Underweight', badge: 'bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800' };
     }
   };
 
   const bmiStyle = getBmiBadge(bmiCategory);
+
+  // Calculate live BMI for a family member
+  const computeMemberBmiMetrics = (hCm: string, wKg: string, ageNum: number, smokerStr: string) => {
+    const h = parseFloat(hCm) || 170;
+    const w = parseFloat(wKg) || 70;
+    const heightM = h / 100.0;
+    const calcBmi = Math.round((w / (heightM * heightM)) * 100) / 100;
+    const category = getBmiCat(calcBmi);
+    const badge = getBmiBadge(category);
+
+    // Compute Health Score & Risk Level
+    let bmiDeduction = category === 'Healthy' ? 0 : (category === 'Overweight' ? 10 : 20);
+    let smokerDeduction = smokerStr === 'yes' ? 30 : 0;
+    let ageDeduction = ageNum >= 50 ? 15 : (ageNum >= 35 ? 5 : 0);
+    let healthScore = Math.max(10, Math.min(100, 100 - (bmiDeduction + smokerDeduction + ageDeduction)));
+
+    let riskLevel = 'Low';
+    if (smokerStr === 'yes' || category === 'Obese' || ageNum >= 55) {
+      riskLevel = (smokerStr === 'yes' && category === 'Obese') ? 'High' : 'Moderate';
+    }
+
+    return { bmi: calcBmi, category, badge, healthScore, riskLevel };
+  };
 
   // Dynamic Family Member Handlers
   const handleAddMember = (rel: 'Child' | 'Parent' | 'Spouse') => {
@@ -105,7 +131,6 @@ export default function PredictionForm({ onPredictionSuccess }: PredictionFormPr
     const nextId = Date.now().toString();
 
     let defaultAge = rel === 'Child' ? 8 : rel === 'Parent' ? 62 : 32;
-    let defaultGender: 'female' | 'male' = rel === 'Parent' ? 'male' : 'female';
 
     setFamilyMembers([
       ...familyMembers,
@@ -114,10 +139,12 @@ export default function PredictionForm({ onPredictionSuccess }: PredictionFormPr
         name: rel === 'Child' ? `Child ${count}` : rel === 'Parent' ? `Parent ${count}` : `Spouse`,
         relationship: rel,
         age: defaultAge,
-        gender: defaultGender,
-        smoker: 'no',
+        gender: rel === 'Parent' ? 'male' : 'female',
         heightCm: rel === 'Child' ? '125' : '165',
         weightKg: rel === 'Child' ? '25' : '65',
+        children: 0,
+        smoker: 'no',
+        region: region,
       },
     ]);
   };
@@ -139,6 +166,10 @@ export default function PredictionForm({ onPredictionSuccess }: PredictionFormPr
     for (const m of familyMembers) {
       if (!m.name.trim()) return 'All family members must have a valid name.';
       if (m.age < 1 || m.age > 100) return `Member ${m.name} must have an age between 1 and 100.`;
+      const h = parseFloat(m.heightCm);
+      const w = parseFloat(m.weightKg);
+      if (isNaN(h) || h < 40 || h > 250) return `Member ${m.name} must have a height between 40 and 250 cm.`;
+      if (isNaN(w) || w < 5 || w > 300) return `Member ${m.name} must have a weight between 5 and 300 kg.`;
     }
 
     const primaryCount = familyMembers.filter((m) => m.relationship === 'Primary').length;
@@ -199,8 +230,8 @@ export default function PredictionForm({ onPredictionSuccess }: PredictionFormPr
             age: single.age,
             gender: single.gender,
             smoker: single.smoker,
-            region,
-            children: 0,
+            region: single.region || region,
+            children: single.children || 0,
             height_cm: parseFloat(single.heightCm) || 170,
             weight_kg: parseFloat(single.weightKg) || 70,
           };
@@ -224,6 +255,8 @@ export default function PredictionForm({ onPredictionSuccess }: PredictionFormPr
             smoker: m.smoker,
             height_cm: parseFloat(m.heightCm) || 170,
             weight_kg: parseFloat(m.weightKg) || 70,
+            children: m.children || 0,
+            region: m.region || region,
           })),
         };
 
@@ -254,86 +287,13 @@ export default function PredictionForm({ onPredictionSuccess }: PredictionFormPr
     if (onPredictionSuccess) onPredictionSuccess(null);
   };
 
-  const formatINR = (val: number) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(val);
-
   return (
     <section id="prediction-card" className="py-8 bg-white dark:bg-[#09090B] transition-colors">
       <div className="max-w-3xl mx-auto px-4 space-y-8">
         
-        {/* Render Family Floater Result Card */}
+        {/* Render Family Floater Dashboard */}
         {familyResult ? (
-          <div className="bg-white dark:bg-[#121215] rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-zinc-800 shadow-xl space-y-6 animate-in fade-in duration-300">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-zinc-800">
-              <div className="flex items-center gap-2.5">
-                <Shield className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                <h3 className="font-bold text-slate-900 dark:text-zinc-100 text-base">Family Floater Summary</h3>
-              </div>
-              <button
-                onClick={handleReset}
-                className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-zinc-200 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 transition-all flex items-center gap-1.5"
-              >
-                <RefreshCw className="w-3.5 h-3.5" /> New Estimation
-              </button>
-            </div>
-
-            <div className="bg-gradient-to-br from-[#18181C] via-[#0F0F12] to-[#18181C] rounded-2xl p-6 text-white text-center space-y-3 border border-zinc-800">
-              <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-                Estimated Family Floater Premium ({familyResult.family_summary.total_members} Members)
-              </span>
-              <div className="text-4xl sm:text-5xl font-black text-white py-1">
-                ₹ {formatINR(familyResult.annual_premium)} <span className="text-lg text-slate-400 font-normal">/ Year</span>
-              </div>
-              <div className="text-xl font-bold text-emerald-400">
-                ₹ {formatINR(familyResult.monthly_premium)} <span className="text-xs text-slate-400 font-normal">/ Month</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-[#18181C] border border-slate-100 dark:border-zinc-800">
-                <span className="text-slate-500 dark:text-zinc-400 block text-[11px]">Covered Members</span>
-                <span className="font-bold text-slate-900 dark:text-zinc-100 text-sm">{familyResult.family_summary.total_members} Members</span>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-[#18181C] border border-slate-100 dark:border-zinc-800">
-                <span className="text-slate-500 dark:text-zinc-400 block text-[11px]">Highest Risk Member</span>
-                <span className="font-bold text-slate-900 dark:text-zinc-100 text-xs truncate block">{familyResult.family_summary.highest_risk_member}</span>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-[#18181C] border border-slate-100 dark:border-zinc-800">
-                <span className="text-slate-500 dark:text-zinc-400 block text-[11px]">Average Family Score</span>
-                <span className="font-bold text-slate-900 dark:text-zinc-100 text-sm">{familyResult.family_summary.average_health_score} / 100</span>
-              </div>
-            </div>
-
-            {/* Individual Member Estimates Table */}
-            <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-zinc-800">
-              <h4 className="text-xs font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider">
-                Individual Member Premium Breakdown
-              </h4>
-
-              <div className="space-y-2 text-xs">
-                {familyResult.family_summary.members.map((mem: any, i: number) => (
-                  <div key={i} className="p-3 rounded-xl bg-slate-50 dark:bg-[#18181C] border border-slate-200/80 dark:border-zinc-800 flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-slate-900 dark:text-zinc-100">{mem.name} ({mem.relationship})</span>
-                      <p className="text-[11px] text-slate-500 dark:text-zinc-400">
-                        {mem.age} yrs • {mem.gender} • BMI: {mem.bmi} • {mem.smoker === 'yes' ? 'Smoker' : 'Non-Smoker'}
-                      </p>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="font-extrabold text-slate-900 dark:text-zinc-100 text-sm">₹ {formatINR(mem.individual_annual_inr)}</span>
-                      <span className="text-[10px] block text-slate-400">Individual Rate</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <p className="text-[11px] text-slate-500 dark:text-zinc-400 text-center pt-2 border-t border-slate-100 dark:border-zinc-800">
-              Estimated family floater premium based on individual AI-generated risk assessments. Not an official insurance quotation.
-            </p>
-          </div>
+          <FamilyDashboard familyResult={familyResult} onReset={handleReset} />
         ) : result ? (
           /* Render Individual Result Cards */
           <div className="space-y-8">
@@ -355,7 +315,7 @@ export default function PredictionForm({ onPredictionSuccess }: PredictionFormPr
                     <Sparkles className="w-6 h-6 text-blue-600 dark:text-blue-400 absolute animate-pulse" />
                   </div>
                   <div className="text-center space-y-1">
-                    <h4 className="font-bold text-slate-900 dark:text-zinc-100 text-base">Analyzing profile & calculating rates...</h4>
+                    <h4 className="font-bold text-slate-900 dark:text-zinc-100 text-base">Analyzing family profiles & calculating rates...</h4>
                     <p className="text-xs text-slate-500 dark:text-zinc-400">Running LightGBM ML prediction engine</p>
                   </div>
                 </div>
@@ -474,7 +434,7 @@ export default function PredictionForm({ onPredictionSuccess }: PredictionFormPr
                       </div>
                     </div>
 
-                    {/* SECTION 2: Live BMI Calculator with Visual Indicator */}
+                    {/* SECTION 2: Live BMI Calculator */}
                     <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-zinc-800">
                       <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-zinc-200 uppercase tracking-wider">
                         <Scale className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
@@ -539,7 +499,6 @@ export default function PredictionForm({ onPredictionSuccess }: PredictionFormPr
                               </div>
                             </div>
 
-                            {/* Clean Real-Time Visual BMI Indicator (Without Multi-Color Line) */}
                             <div className="p-3 rounded-xl bg-white dark:bg-[#121215] border border-slate-200/80 dark:border-zinc-800 flex items-center justify-between">
                               <span className="text-xs font-bold text-slate-900 dark:text-zinc-100">
                                 Instant BMI: <span className="text-sm font-extrabold text-blue-600 dark:text-blue-400">{derivedBmi}</span>
@@ -654,7 +613,7 @@ export default function PredictionForm({ onPredictionSuccess }: PredictionFormPr
                     </div>
                   </>
                 ) : (
-                  /* FAMILY FLOATER PLAN WORKFLOW */
+                  /* ENHANCED FAMILY FLOATER PLAN WORKFLOW (COMPLETE PER-MEMBER FORM) */
                   <div className="space-y-6">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-zinc-200 uppercase tracking-wider">
@@ -683,88 +642,164 @@ export default function PredictionForm({ onPredictionSuccess }: PredictionFormPr
                       </div>
                     </div>
 
-                    {familyMembers.map((m, idx) => (
-                      <div
-                        key={m.id}
-                        className="p-4 rounded-2xl bg-slate-50 dark:bg-[#18181C] border border-slate-200 dark:border-zinc-800 space-y-4 relative"
-                      >
-                        <div className="flex items-center justify-between pb-2 border-b border-slate-200/60 dark:border-zinc-700">
-                          <div className="flex items-center gap-2">
-                            <span className="w-6 h-6 rounded-lg bg-blue-600 text-white text-xs font-bold flex items-center justify-center">
-                              {idx + 1}
-                            </span>
-                            <input
-                              type="text"
-                              value={m.name}
-                              onChange={(e) => handleFamilyMemberChange(m.id, 'name', e.target.value)}
-                              className="font-bold text-xs bg-transparent text-slate-900 dark:text-zinc-100 outline-none border-b border-dashed border-slate-300 dark:border-zinc-600"
-                            />
+                    {familyMembers.map((m, idx) => {
+                      const memberMetrics = computeMemberBmiMetrics(m.heightCm, m.weightKg, m.age, m.smoker);
+                      return (
+                        <div
+                          key={m.id}
+                          className="p-5 rounded-2xl bg-slate-50 dark:bg-[#18181C] border border-slate-200 dark:border-zinc-800 space-y-4 relative"
+                        >
+                          {/* Member Title Header & Remove */}
+                          <div className="flex items-center justify-between pb-3 border-b border-slate-200/60 dark:border-zinc-700">
+                            <div className="flex items-center gap-2.5">
+                              <span className="w-7 h-7 rounded-xl bg-blue-600 text-white text-xs font-bold flex items-center justify-center shadow-xs">
+                                {idx + 1}
+                              </span>
+                              <input
+                                type="text"
+                                value={m.name}
+                                onChange={(e) => handleFamilyMemberChange(m.id, 'name', e.target.value)}
+                                className="font-extrabold text-sm bg-transparent text-slate-900 dark:text-zinc-100 outline-none border-b border-dashed border-slate-300 dark:border-zinc-600"
+                              />
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              {/* Live Health Score & Risk Badge */}
+                              <span className="text-[11px] font-bold text-slate-600 dark:text-zinc-300">
+                                Score: <strong className="text-blue-600 dark:text-blue-400">{memberMetrics.healthScore}</strong>/100 ({memberMetrics.riskLevel})
+                              </span>
+
+                              {familyMembers.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveFamilyMember(m.id)}
+                                  className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-colors"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
                           </div>
 
-                          {familyMembers.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveFamilyMember(m.id)}
-                              className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/60 transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
+                          {/* Member Input Grid (All 10 required fields) */}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                            
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400 mb-1">Relationship</label>
+                              <select
+                                value={m.relationship}
+                                onChange={(e) => handleFamilyMemberChange(m.id, 'relationship', e.target.value as any)}
+                                className="w-full px-2.5 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#121215] text-slate-900 dark:text-zinc-100 outline-none"
+                              >
+                                <option value="Primary">Primary Applicant</option>
+                                <option value="Spouse">Spouse</option>
+                                <option value="Child">Child</option>
+                                <option value="Parent">Parent</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400 mb-1">Age (Years)</label>
+                              <input
+                                type="number"
+                                min={1}
+                                max={100}
+                                value={m.age}
+                                onChange={(e) => handleFamilyMemberChange(m.id, 'age', parseInt(e.target.value) || 1)}
+                                className="w-full px-2.5 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#121215] text-slate-900 dark:text-zinc-100 outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400 mb-1">Gender</label>
+                              <select
+                                value={m.gender}
+                                onChange={(e) => handleFamilyMemberChange(m.id, 'gender', e.target.value as any)}
+                                className="w-full px-2.5 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#121215] text-slate-900 dark:text-zinc-100 outline-none"
+                              >
+                                <option value="female">Female</option>
+                                <option value="male">Male</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400 mb-1">Height (cm)</label>
+                              <input
+                                type="number"
+                                min={40}
+                                max={250}
+                                value={m.heightCm}
+                                onChange={(e) => handleFamilyMemberChange(m.id, 'heightCm', e.target.value)}
+                                className="w-full px-2.5 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#121215] text-slate-900 dark:text-zinc-100 outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400 mb-1">Weight (kg)</label>
+                              <input
+                                type="number"
+                                min={5}
+                                max={300}
+                                value={m.weightKg}
+                                onChange={(e) => handleFamilyMemberChange(m.id, 'weightKg', e.target.value)}
+                                className="w-full px-2.5 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#121215] text-slate-900 dark:text-zinc-100 outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-600 dark:text-zinc-400 mb-1">Smoking Status</label>
+                              <select
+                                value={m.smoker}
+                                onChange={(e) => handleFamilyMemberChange(m.id, 'smoker', e.target.value as any)}
+                                className="w-full px-2.5 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#121215] text-slate-900 dark:text-zinc-100 outline-none"
+                              >
+                                <option value="no">Non-Smoker</option>
+                                <option value="yes">Smoker</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 mb-1">Children / Dependents</label>
+                              <input
+                                type="number"
+                                min={0}
+                                max={10}
+                                value={m.children}
+                                onChange={(e) => handleFamilyMemberChange(m.id, 'children', parseInt(e.target.value) || 0)}
+                                className="w-full px-2.5 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#121215] text-slate-900 dark:text-zinc-100 outline-none"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-500 dark:text-zinc-400 mb-1">Region</label>
+                              <select
+                                value={m.region}
+                                onChange={(e) => handleFamilyMemberChange(m.id, 'region', e.target.value as any)}
+                                className="w-full px-2.5 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#121215] text-slate-900 dark:text-zinc-100 outline-none"
+                              >
+                                <option value="southeast">Southeast</option>
+                                <option value="southwest">Southwest</option>
+                                <option value="northeast">Northeast</option>
+                                <option value="northwest">Northwest</option>
+                              </select>
+                            </div>
+
+                            {/* Live BMI & Color Indicator Card */}
+                            <div className="p-2 rounded-lg bg-white dark:bg-[#121215] border border-slate-200/80 dark:border-zinc-700 flex items-center justify-between col-span-2 sm:col-span-1">
+                              <div>
+                                <span className="text-[10px] text-slate-400 block">Instant BMI</span>
+                                <span className="font-extrabold text-blue-600 dark:text-blue-400">{memberMetrics.bmi}</span>
+                              </div>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 ${memberMetrics.badge.badge}`}>
+                                <span>{memberMetrics.badge.emoji}</span>
+                                <span>{memberMetrics.category}</span>
+                              </span>
+                            </div>
+
+                          </div>
                         </div>
-
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                          <div>
-                            <label className="block text-[10px] font-semibold text-slate-500 dark:text-zinc-400 mb-1">Relationship</label>
-                            <select
-                              value={m.relationship}
-                              onChange={(e) => handleFamilyMemberChange(m.id, 'relationship', e.target.value as any)}
-                              className="w-full px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#121215] text-slate-900 dark:text-zinc-100 outline-none"
-                            >
-                              <option value="Primary">Primary Applicant</option>
-                              <option value="Spouse">Spouse</option>
-                              <option value="Child">Child</option>
-                              <option value="Parent">Parent</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-[10px] font-semibold text-slate-500 dark:text-zinc-400 mb-1">Age</label>
-                            <input
-                              type="number"
-                              min={1}
-                              max={100}
-                              value={m.age}
-                              onChange={(e) => handleFamilyMemberChange(m.id, 'age', parseInt(e.target.value) || 1)}
-                              className="w-full px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#121215] text-slate-900 dark:text-zinc-100 outline-none"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-[10px] font-semibold text-slate-500 dark:text-zinc-400 mb-1">Gender</label>
-                            <select
-                              value={m.gender}
-                              onChange={(e) => handleFamilyMemberChange(m.id, 'gender', e.target.value as any)}
-                              className="w-full px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#121215] text-slate-900 dark:text-zinc-100 outline-none"
-                            >
-                              <option value="female">Female</option>
-                              <option value="male">Male</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-[10px] font-semibold text-slate-500 dark:text-zinc-400 mb-1">Smoking Status</label>
-                            <select
-                              value={m.smoker}
-                              onChange={(e) => handleFamilyMemberChange(m.id, 'smoker', e.target.value as any)}
-                              className="w-full px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#121215] text-slate-900 dark:text-zinc-100 outline-none"
-                            >
-                              <option value="no">Non-Smoker</option>
-                              <option value="yes">Smoker</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
@@ -776,7 +811,7 @@ export default function PredictionForm({ onPredictionSuccess }: PredictionFormPr
                     className="w-full py-4 rounded-xl text-base font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md transition-all flex items-center justify-center gap-2"
                   >
                     <Sparkles className="w-5 h-5" />
-                    <span>{policyType === 'individual' ? 'Predict Individual Premium' : 'Estimate Family Floater Premium'}</span>
+                    <span>{policyType === 'individual' ? 'Predict Individual Premium' : 'Predict Family Premium'}</span>
                   </button>
                 </div>
 
