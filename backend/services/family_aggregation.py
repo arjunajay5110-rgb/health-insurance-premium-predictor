@@ -1,8 +1,12 @@
 import math
 import logging
 from typing import List, Dict, Any
-from backend.ml.prediction import prediction_engine
-from backend.services.premium_calibration import calibration_service
+try:
+    from backend.ml.prediction import prediction_engine
+    from backend.services.premium_calibration import calibration_service
+except ModuleNotFoundError:
+    from ml.prediction import prediction_engine
+    from services.premium_calibration import calibration_service
 
 logger = logging.getLogger("health_insurance_api")
 
