@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Shield, RefreshCw, Activity, CheckCircle, Circle, Milestone, Heart, Users, Scale, Flame, UserCheck } from 'lucide-react';
+import { Shield, RefreshCw, Activity, CheckCircle, Circle, Milestone, Scale, Sparkles, AlertCircle, Info, ChevronRight } from 'lucide-react';
 
 interface FamilyDashboardProps {
   familyResult: any;
@@ -11,6 +11,7 @@ interface FamilyDashboardProps {
 export default function FamilyDashboard({ familyResult, onReset }: FamilyDashboardProps) {
   const summary = familyResult.family_summary;
   const members = summary.members || [];
+  const influenceInsights = summary.influence_insights || [];
   
   const [animatedScore, setAnimatedScore] = useState<number>(0);
 
@@ -63,6 +64,10 @@ export default function FamilyDashboard({ familyResult, onReset }: FamilyDashboa
     }
   };
 
+  const subtotal = familyResult.subtotal_annual_premium || familyResult.annual_premium;
+  const discountAmount = familyResult.discount_amount || 0;
+  const discountPct = familyResult.discount_percentage || 0;
+
   // Milestones Data
   const milestones = [
     {
@@ -82,7 +87,7 @@ export default function FamilyDashboard({ familyResult, onReset }: FamilyDashboa
     {
       title: 'Regular Exercise Goal',
       achieved: summary.average_health_score >= 75,
-      achievedLabel: '✅ Family Wellness & Activity Goal',
+      achievedLabel: '✅ Family Wellness Goal',
       pendingLabel: '○ Increase Active Daily Hours',
       desc: 'Active routines support long-term cardiovascular health across all age tiers.',
     },
@@ -104,8 +109,8 @@ export default function FamilyDashboard({ familyResult, onReset }: FamilyDashboa
           <div className="flex items-center gap-2.5">
             <Shield className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
             <div>
-              <h3 className="font-bold text-slate-900 dark:text-zinc-100 text-lg">Family Prediction Dashboard</h3>
-              <p className="text-xs text-slate-500 dark:text-zinc-400">Comprehensive AI Health Floater Assessment</p>
+              <h3 className="font-bold text-slate-900 dark:text-zinc-100 text-lg">Family Floater Prediction Dashboard</h3>
+              <p className="text-xs text-slate-500 dark:text-zinc-400">Independent adult risk predictions + floater discount</p>
             </div>
           </div>
           <button
@@ -118,13 +123,47 @@ export default function FamilyDashboard({ familyResult, onReset }: FamilyDashboa
 
         <div className="bg-gradient-to-br from-[#18181C] via-[#0F0F12] to-[#18181C] rounded-2xl p-6 text-white text-center space-y-3 border border-zinc-800">
           <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider bg-emerald-500/10 px-3.5 py-1 rounded-full border border-emerald-500/20">
-            Estimated Family Floater Premium ({summary.total_members} Members)
+            Final Family Floater Premium ({summary.total_members} Insured Members)
           </span>
           <div className="text-4xl sm:text-5xl font-black text-white py-1">
             ₹ {formatINR(familyResult.annual_premium)} <span className="text-lg text-slate-400 font-normal">/ Year</span>
           </div>
           <div className="text-xl font-bold text-emerald-400">
             ₹ {formatINR(familyResult.monthly_premium)} <span className="text-xs text-slate-400 font-normal">/ Month</span>
+          </div>
+        </div>
+
+        {/* Transparent Premium Calculation Breakdown */}
+        <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#18181C] border border-slate-200/80 dark:border-zinc-800 space-y-3 text-xs">
+          <h4 className="font-bold text-slate-900 dark:text-zinc-100 text-xs uppercase tracking-wider flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+            Transparent Premium Calculation Breakdown
+          </h4>
+
+          <div className="space-y-2">
+            {members.map((m: any, idx: number) => (
+              <div key={idx} className="flex justify-between items-center text-slate-700 dark:text-zinc-300">
+                <span>{m.name} ({m.relationship}){m.is_child ? ' • Child Rate' : ''}</span>
+                <span className="font-semibold">₹ {formatINR(m.individual_annual_inr)} / year</span>
+              </div>
+            ))}
+
+            <div className="pt-2 border-t border-slate-200 dark:border-zinc-700 flex justify-between font-bold text-slate-800 dark:text-zinc-200">
+              <span>Subtotal (Sum of Individual Premiums)</span>
+              <span>₹ {formatINR(subtotal)}</span>
+            </div>
+
+            {discountAmount > 0 && (
+              <div className="flex justify-between font-bold text-emerald-600 dark:text-emerald-400">
+                <span>Family Floater Multi-Policy Discount ({discountPct}%)</span>
+                <span>− ₹ {formatINR(discountAmount)}</span>
+              </div>
+            )}
+
+            <div className="pt-2 border-t border-slate-200 dark:border-zinc-700 flex justify-between font-extrabold text-sm text-slate-900 dark:text-zinc-100">
+              <span>Final Family Floater Premium</span>
+              <span className="text-emerald-600 dark:text-emerald-400">₹ {formatINR(familyResult.annual_premium)} / year</span>
+            </div>
           </div>
         </div>
 
@@ -151,6 +190,24 @@ export default function FamilyDashboard({ familyResult, onReset }: FamilyDashboa
           </div>
         </div>
       </div>
+
+      {/* Premium Influence Insights */}
+      {influenceInsights.length > 0 && (
+        <div className="bg-white dark:bg-[#121215] rounded-3xl p-6 border border-slate-200 dark:border-zinc-800 shadow-xl space-y-3">
+          <h4 className="font-bold text-slate-900 dark:text-zinc-100 text-sm flex items-center gap-2">
+            <Info className="w-4 h-4 text-blue-600" />
+            Key Premium Influence Factors
+          </h4>
+          <div className="space-y-2 text-xs">
+            {influenceInsights.map((insight: string, idx: number) => (
+              <div key={idx} className="flex items-start gap-2 text-slate-700 dark:text-zinc-300">
+                <ChevronRight className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
+                <span>{insight}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 3. Overall Family Score & Family Risk Circular Gauges */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -225,13 +282,13 @@ export default function FamilyDashboard({ familyResult, onReset }: FamilyDashboa
 
       </div>
 
-      {/* 4. Per-Member BMI & Health Analysis */}
+      {/* 4. Per-Member BMI & Rate Analysis */}
       <div className="bg-white dark:bg-[#121215] rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-zinc-800 shadow-xl space-y-5">
         <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 dark:border-zinc-800">
           <Scale className="w-5 h-5 text-blue-600 dark:text-blue-400" />
           <div>
             <h4 className="font-bold text-slate-900 dark:text-zinc-100 text-base">Per-Member BMI & Rate Analysis</h4>
-            <p className="text-xs text-slate-500 dark:text-zinc-400">Individual health metrics for enrolled members</p>
+            <p className="text-xs text-slate-500 dark:text-zinc-400">Individual risk breakdown per insured person</p>
           </div>
         </div>
 

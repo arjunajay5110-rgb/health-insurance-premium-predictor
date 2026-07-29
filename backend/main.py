@@ -9,10 +9,12 @@ from typing import Optional, List, Dict, Any
 try:
     from backend.ml.prediction import prediction_engine
     from backend.services.premium_calibration import calibration_service
+    from backend.services.family_aggregation import family_aggregation_service
     from backend.ai.router import router as ai_router
 except ModuleNotFoundError:
     from ml.prediction import prediction_engine
     from services.premium_calibration import calibration_service
+    from services.family_aggregation import family_aggregation_service
     from ai.router import router as ai_router
 
 # Configure application logging
@@ -231,111 +233,17 @@ def predict_premium(payload: PredictRequest):
 
 @app.post("/api/predict/family")
 def predict_family_premium(payload: FamilyPredictRequest):
-    """Estimate Family Floater Health Insurance Premium based on individual ML predictions."""
-    start_time = time.time()
-    
+    """Estimate Family Floater Health Insurance Premium based on independent ML predictions + floater discount."""
     if not payload.members:
         raise HTTPException(status_code=400, detail="At least one family member is required.")
 
-    member_results = []
-    total_scores = 0
-    total_ages = 0
-    total_bmis = 0
-    num_smokers = 0
-    num_healthy = 0
-
-    for m in payload.members:
-        # Resolve BMI for member
-        h = m.height_cm or 170.0
-        w = m.weight_kg or 70.0
-        calc_bmi = m.bmi
-        if calc_bmi is None or calc_bmi <= 0:
-            height_m = h / 100.0
-            calc_bmi = w / (height_m ** 2)
-        calc_bmi = round(float(calc_bmi), 2)
-
-        metrics = compute_health_metrics(m.age, calc_bmi, m.smoker)
-        total_scores += metrics["health_score"]
-        total_ages += m.age
-        total_bmis += calc_bmi
-
-        if m.smoker == 'yes':
-            num_smokers += 1
-
-        if metrics["bmi_status"] == "Healthy" and m.smoker == 'no':
-            num_healthy += 1
-
-        num_children = m.children if m.children is not None else 0
-        mem_region = m.region or payload.region or "southeast"
-
-        raw_usd = prediction_engine.predict_raw_usd(
-            age=m.age,
-            gender=m.gender,
-            bmi=calc_bmi,
-            children=num_children,
-            smoker=m.smoker,
-            region=mem_region
+    try:
+        member_dicts = [m.dict() for m in payload.members]
+        result = family_aggregation_service.calculate_family_floater(member_dicts, payload.region)
+        return result
+    except Exception as e:
+        logger.error(f"Error during family floater prediction: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while estimating family floater premium: {str(e)}"
         )
-        calibrated = calibration_service.calibrate(raw_usd, metrics["risk_level"])
-
-        member_results.append({
-            "name": m.name,
-            "relationship": m.relationship,
-            "age": m.age,
-            "gender": m.gender,
-            "height_cm": h,
-            "weight_kg": w,
-            "bmi": calc_bmi,
-            "bmi_status": metrics["bmi_status"],
-            "smoker": m.smoker,
-            "children": num_children,
-            "region": mem_region,
-            "risk_level": metrics["risk_level"],
-            "health_score": metrics["health_score"],
-            "health_status": metrics["health_status"],
-            "individual_annual_inr": calibrated["annual_premium"]
-        })
-
-    # Sort members by individual premium descending
-    sorted_members = sorted(member_results, key=lambda x: x["individual_annual_inr"], reverse=True)
-
-    # Family Floater Aggregation Rule:
-    # 100% of highest risk member + 40% of second member + 25% of remaining members
-    floater_annual = sorted_members[0]["individual_annual_inr"]
-    if len(sorted_members) > 1:
-        floater_annual += sorted_members[1]["individual_annual_inr"] * 0.40
-    for extra in sorted_members[2:]:
-        floater_annual += extra["individual_annual_inr"] * 0.25
-
-    final_annual_inr = round(floater_annual)
-    final_monthly_inr = round(final_annual_inr / 12)
-
-    avg_score = round(total_scores / len(sorted_members))
-    avg_age = round(total_ages / len(sorted_members), 1)
-    avg_bmi = round(total_bmis / len(sorted_members), 1)
-    highest_risk = sorted_members[0]["relationship"] + " (" + sorted_members[0]["name"] + ")"
-
-    has_high = any(x["risk_level"] == "High" for x in sorted_members)
-    family_overall_risk = "High" if has_high else ("Moderate" if avg_score < 80 else "Low")
-
-    elapsed_ms = round((time.time() - start_time) * 1000, 2)
-
-    return {
-        "success": True,
-        "policy_type": "Family Floater",
-        "annual_premium": final_annual_inr,
-        "monthly_premium": final_monthly_inr,
-        "currency": "₹",
-        "processing_time_ms": elapsed_ms,
-        "family_summary": {
-            "total_members": len(sorted_members),
-            "average_age": avg_age,
-            "average_bmi": avg_bmi,
-            "num_smokers": num_smokers,
-            "num_healthy": num_healthy,
-            "members": sorted_members,
-            "highest_risk_member": highest_risk,
-            "average_health_score": avg_score,
-            "overall_family_risk": family_overall_risk
-        }
-    }
