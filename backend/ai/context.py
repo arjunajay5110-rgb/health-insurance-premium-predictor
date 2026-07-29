@@ -2,20 +2,22 @@
 Prediction Context Formatter for AI Advisor
 """
 
-def format_prediction_context(ctx: dict = None) -> str:
-    """Format user prediction context into a detailed block for LLM system prompt."""
-    if not ctx:
+from typing import Dict, Any, Optional
+
+def format_prediction_context(ctx: Optional[Dict[str, Any]] = None) -> str:
+    """Format user prediction context into a detailed, readable block for system prompts."""
+    if not ctx or not isinstance(ctx, dict):
         return "PREDICTION CONTEXT: No active prediction generated yet. (Mode: Pre-prediction general insurance QA)."
 
-    # Handle Family Floater context if present
+    # Family Floater Context
     if ctx.get("policy_type") == "Family Floater" or "family_summary" in ctx:
         summary = ctx.get("family_summary", {})
         members = summary.get("members", [])
         member_str_list = [
-            f"- {m.get('name')} ({m.get('relationship')}): Age {m.get('age')}, BMI {m.get('bmi')} ({m.get('bmi_status')}), {m.get('smoker', 'no').upper()} smoker, Health Score {m.get('health_score')}/100"
+            f"- {m.get('name', 'Member')} ({m.get('relationship', 'Member')}): Age {m.get('age', 'N/A')}, BMI {m.get('bmi', 'N/A')} ({m.get('bmi_status', 'N/A')}), {str(m.get('smoker', 'no')).upper()} smoker, Health Score {m.get('health_score', 'N/A')}/100"
             for m in members
         ]
-        members_formatted = "\n".join(member_str_list)
+        members_formatted = "\n".join(member_str_list) if member_str_list else "None specified"
 
         return f"""CURRENT FAMILY FLOATER PREDICTION CONTEXT:
 - Policy Type: Family Floater Plan
@@ -30,7 +32,7 @@ def format_prediction_context(ctx: dict = None) -> str:
 - Enrolled Family Members Detail:
 {members_formatted}"""
 
-    # Individual Prediction context
+    # Individual Context
     snapshot = ctx.get("health_snapshot", {})
     inputs = ctx.get("inputs", {})
 
@@ -52,10 +54,10 @@ def format_prediction_context(ctx: dict = None) -> str:
 - Estimated Annual Premium: ₹{annual:,} INR
 - Estimated Monthly Premium: ₹{monthly:,} INR
 - Age: {age} years
-- Gender: {gender.capitalize()}
+- Gender: {str(gender).capitalize()}
 - BMI: {bmi} ({bmi_status} category)
-- Smoking Status: {'Smoker' if smoker == 'yes' else 'Non-Smoker'}
+- Smoking Status: {'Smoker' if str(smoker).lower() == 'yes' else 'Non-Smoker'}
 - Dependents / Children: {children}
-- Geographic Region: {region.capitalize()}
+- Geographic Region: {str(region).capitalize()}
 - Health Score: {score} / 100 ({health_status})
 - Profile Risk Level: {risk_level} Risk"""
