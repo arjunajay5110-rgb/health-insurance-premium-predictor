@@ -18,19 +18,17 @@ interface MessageItem {
 
 const PRE_PREDICTION_CHIPS = [
   '💬 What is Health Insurance?',
-  '💬 What is BMI?',
+  '💬 How can I lower my premium?',
   '💬 What is a Waiting Period?',
-  '💬 What is Co-payment?',
-  '💬 What is a Deductible?',
+  '💬 Deductible vs Co-payment',
 ];
 
 const POST_PREDICTION_CHIPS = [
-  '💬 Explain my premium',
-  '💬 Why is my premium high?',
-  '💬 Explain my BMI',
-  '💬 How can I improve my Health Score?',
-  '💬 What affected my premium?',
-  '💬 How can I improve my health profile?',
+  '💬 How can I lose weight?',
+  '💬 How can I lower my premium?',
+  '💬 Give me a 7-Day Wellness Plan',
+  '💬 Am I healthy?',
+  '💬 Which insurance policy is best?',
 ];
 
 export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvisorProps) {
@@ -42,7 +40,7 @@ export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvis
     {
       id: 'welcome-1',
       role: 'assistant',
-      content: "Hello! I'm Aegis AI, your AI Insurance Advisor. Ask me anything about health insurance, deductibles, waiting periods, or policy plans!",
+      content: "Hello! I'm Aegis AI, your Personal AI Health Coach & Insurance Advisor. Ask me anything about weight loss plans, health scores, or insurance policies!",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -67,11 +65,12 @@ export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvis
       setHasContextNotified(true);
       const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const annualStr = new Intl.NumberFormat('en-IN').format(predictionContext.annual_premium);
+      const score = predictionContext.health_snapshot?.health_score || 85;
 
       const updateMsg: MessageItem = {
         id: `ctx-${Date.now()}`,
         role: 'assistant',
-        content: `I've received your updated premium estimate (**₹${annualStr} / Year**)! Feel free to ask me to explain your premium breakdown or how to improve your health score.`,
+        content: `I've updated your session with your latest prediction (**₹${annualStr} / Year**, Health Score **${score}/100**). Ask me for a personalized 7-day plan, premium optimization tips, or policy advice!`,
         timestamp: timeStr,
       };
 
@@ -169,7 +168,7 @@ export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvis
         </div>
       )}
 
-      {/* 2. Prominent Floating Action Pill Button (Explicitly Labeled "AI Advisor") */}
+      {/* 2. Prominent Floating Action Pill Button */}
       <button
         onClick={() => {
           setIsOpen(!isOpen);
@@ -211,10 +210,10 @@ export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvis
                 <div className="flex items-center gap-1.5">
                   <h3 className="font-bold text-slate-900 dark:text-zinc-100 text-sm">AI Advisor</h3>
                   <span className="px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-zinc-800 text-blue-700 dark:text-blue-300 text-[9px] font-bold">
-                    Health AI
+                    Health & Insurance Coach
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-zinc-400">Context-aware insurance guidance</p>
+                <p className="text-[11px] text-slate-500 dark:text-zinc-400">Context-aware health & policy advisor</p>
               </div>
             </div>
 
@@ -300,7 +299,7 @@ export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvis
 
           {/* Context Banner Tag */}
           <div className="px-3 py-1.5 bg-blue-50/70 dark:bg-zinc-800/60 border-t border-b border-slate-200/60 dark:border-zinc-800 text-[10px] text-blue-900 dark:text-blue-300 flex items-center justify-between shrink-0">
-            <span>{predictionContext ? '💡 Prediction Context Active' : '💡 Pre-Prediction Mode'}</span>
+            <span>{predictionContext ? '💡 Health Profile Context Active' : '💡 Pre-Prediction Mode'}</span>
             <span className="font-semibold">{predictionContext ? `₹${new Intl.NumberFormat('en-IN').format(predictionContext.annual_premium)}/yr` : 'General QA'}</span>
           </div>
 
@@ -329,7 +328,7 @@ export default function FloatingAiAdvisor({ predictionContext }: FloatingAiAdvis
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              placeholder="Ask AI Advisor about your insurance..."
+              placeholder="Ask AI Advisor about health or insurance..."
               className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-[#18181C] text-xs text-slate-900 dark:text-zinc-100 outline-none focus:ring-2 focus:ring-blue-500 transition-all"
             />
 
